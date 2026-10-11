@@ -228,14 +228,14 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (isPlaying) {
+    if (!audio.paused) {
       audio.pause();
       setIsPlaying(false);
       showToast('Music Off 🔇');
     } else {
       audio.play().then(() => {
         setIsPlaying(true);
-        showToast('Music Playing 🎵 (October 17th)');
+        showToast('Music Playing 🎵');
       }).catch(err => {
         console.error('Audio playback error:', err);
       });
@@ -355,6 +355,8 @@ export default function App() {
         src="/October_Seventeenth.mp3"
         loop
         preload="auto"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
       />
 
       {/* ── Floating Music Control Button ── */}

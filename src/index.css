@@ -1060,5 +1060,45 @@ body {
   }
 }
 
+/* ===== MUSIC AUTOPLAY START HINT ===== */
+.music-start-hint {
+  position: fixed;
+  top: 4.5rem;
+  right: 1.25rem;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(45, 18, 2, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(241, 196, 15, 0.7);
+  border-radius: 30px;
+  padding: 0.45rem 1rem;
+  color: #fff9e6;
+  font-family: var(--body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 0 15px rgba(241, 196, 15, 0.3);
+  cursor: pointer;
+  animation: hintPulse 2s ease-in-out infinite alternate;
+  user-select: none;
+}
+
+@keyframes hintPulse {
+  0%   { transform: translateY(0); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35); }
+  100% { transform: translateY(-3px); box-shadow: 0 6px 22px rgba(241, 196, 15, 0.5); }
+}
+
+@media (max-width: 600px) {
+  .music-start-hint {
+    top: 3.4rem;
+    right: 0.75rem;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.8rem;
+  }
+}
+
+
 
 

@@ -157,6 +157,7 @@ export default function App() {
   const [allBlown,    setAllBlown]    = useState(false);
   const [toastMsg,    setToastMsg]    = useState('');
   const [isPlaying,   setIsPlaying]   = useState(false);
+  const [needsTapToPlay, setNeedsTapToPlay] = useState(false);
   const audioRef                      = useRef(null);
   const userToggledRef                = useRef(false);
   const particleId                    = useRef(0);
@@ -179,46 +180,51 @@ export default function App() {
     }
   }, [isBdayMode]);
 
-  /* ── Background Music Autoplay on website open ── */
+  /* ── Robust Autoplay with Fallback Unlock ── */
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = 0.55;
 
-    // Try autoplay when page opens
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise
+    // Helper to start playback
+    const startAudio = () => {
+      audio.muted = false;
+      const p = audio.play();
+      if (p !== undefined) {
+        p.then(() => {
+          setIsPlaying(true);
+          setNeedsTapToPlay(false);
+        }).catch(() => {});
+      }
+    };
+
+    // Try unmuted autoplay immediately
+    const directPromise = audio.play();
+    if (directPromise !== undefined) {
+      directPromise
         .then(() => {
           setIsPlaying(true);
+          setNeedsTapToPlay(false);
         })
         .catch(() => {
-          // Autoplay blocked by browser policy until interaction
-          setIsPlaying(false);
+          // Autoplay blocked by browser policy: start muted and queue unlock on ANY gesture
+          setNeedsTapToPlay(true);
+          audio.muted = true;
+          audio.play().catch(() => {});
+
+          const unlock = () => {
+            if (!userToggledRef.current) {
+              startAudio();
+            }
+            events.forEach(ev => window.removeEventListener(ev, unlock, { capture: true }));
+          };
+
+          const events = ['pointerdown', 'mousedown', 'touchstart', 'click', 'keydown', 'scroll', 'wheel'];
+          events.forEach(ev => window.addEventListener(ev, unlock, { capture: true, once: true }));
         });
     }
 
-    // Play on first user interaction if blocked
-    const handleFirstInteraction = () => {
-      if (!userToggledRef.current && audio.paused) {
-        audio.play().then(() => {
-          setIsPlaying(true);
-        }).catch(() => {});
-      }
-      window.removeEventListener('click', handleFirstInteraction);
-      window.removeEventListener('touchstart', handleFirstInteraction);
-      window.removeEventListener('keydown', handleFirstInteraction);
-    };
-
-    window.addEventListener('click', handleFirstInteraction, { once: true });
-    window.addEventListener('touchstart', handleFirstInteraction, { once: true });
-    window.addEventListener('keydown', handleFirstInteraction, { once: true });
-
-    return () => {
-      window.removeEventListener('click', handleFirstInteraction);
-      window.removeEventListener('touchstart', handleFirstInteraction);
-      window.removeEventListener('keydown', handleFirstInteraction);
-    };
+    return () => {};
   }, []);
 
   /* ── Music Toggle (Turn Music Off/On) ── */
@@ -228,13 +234,16 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (!audio.paused) {
+    if (!audio.paused && !audio.muted) {
       audio.pause();
       setIsPlaying(false);
+      setNeedsTapToPlay(false);
       showToast('Music Off 🔇');
     } else {
+      audio.muted = false;
       audio.play().then(() => {
         setIsPlaying(true);
+        setNeedsTapToPlay(false);
         showToast('Music Playing 🎵');
       }).catch(err => {
         console.error('Audio playback error:', err);
@@ -248,9 +257,18 @@ export default function App() {
     setTimeout(() => setToastMsg(''), 2500);
   }, []);
 
-  /* ── Click-anywhere particle burst ── */
+  /* ── Click-anywhere particle burst & audio unlock ── */
   const handlePageClick = useCallback((e) => {
-    // Don't fire inside modal
+    // Also unlock audio if it was waiting for gesture
+    if (audioRef.current && (audioRef.current.paused || audioRef.current.muted) && !userToggledRef.current) {
+      audioRef.current.muted = false;
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+        setNeedsTapToPlay(false);
+      }).catch(() => {});
+    }
+
+    // Don't fire particles inside modal
     if (e.target.closest('.overlay')) return;
 
     const id     = particleId.current++;
@@ -353,9 +371,10 @@ export default function App() {
       <audio
         ref={audioRef}
         src="/October_Seventeenth.mp3"
+        autoPlay
         loop
         preload="auto"
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => { setIsPlaying(true); setNeedsTapToPlay(false); }}
         onPause={() => setIsPlaying(false)}
       />
 
@@ -376,6 +395,25 @@ export default function App() {
           </span>
         )}
       </button>
+
+      {/* ── Tap Anywhere To Play Music Floating Prompt (if browser blocked initial sound) ── */}
+      {needsTapToPlay && !isPlaying && (
+        <div
+          className="music-start-hint"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (audioRef.current) {
+              audioRef.current.muted = false;
+              audioRef.current.play().then(() => {
+                setIsPlaying(true);
+                setNeedsTapToPlay(false);
+              }).catch(() => {});
+            }
+          }}
+        >
+          <span>🎵 Tap anywhere for birthday music! 🍁✨</span>
+        </div>
+      )}
 
       {/* ═══════════════════════════
            PAGE CONTENT

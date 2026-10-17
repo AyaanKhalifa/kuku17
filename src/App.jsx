@@ -100,23 +100,38 @@ function useTypewriter(text, speed = 90, startDelay = 800) {
 }
 
 /* Birthday countdown (days until Oct 17) */
-function useCountdown(target) {
-  const [days, setDays] = useState(null);
+function useBirthdayCountdown(targetMonth = 9, targetDay = 17) {
+  const [status, setStatus] = useState({ days: null, isToday: false });
 
   useEffect(() => {
     const calc = () => {
-      const now  = new Date();
-      const next = new Date(target);
-      if (next < now) next.setFullYear(now.getFullYear() + 1);
-      const diff = Math.ceil((next - now) / (1000 * 60 * 60 * 24));
-      setDays(diff);
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const isToday = now.getMonth() === targetMonth && now.getDate() === targetDay;
+
+      if (isToday) {
+        setStatus({ days: 0, isToday: true });
+        return;
+      }
+
+      let target = new Date(currentYear, targetMonth, targetDay, 0, 0, 0);
+      const todayStart = new Date(currentYear, now.getMonth(), now.getDate(), 0, 0, 0);
+
+      if (target < todayStart) {
+        target = new Date(currentYear + 1, targetMonth, targetDay, 0, 0, 0);
+      }
+
+      const diffTime = target - todayStart;
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      setStatus({ days: diffDays, isToday: false });
     };
+
     calc();
     const t = setInterval(calc, 60_000);
     return () => clearInterval(t);
-  }, [target]);
+  }, [targetMonth, targetDay]);
 
-  return days;
+  return status;
 }
 
 /* ══════════════════════════════════════════════
@@ -141,9 +156,91 @@ export default function App() {
   const [candles,     setCandles]     = useState(Array(CANDLES_COUNT).fill(true)); // true = lit
   const [allBlown,    setAllBlown]    = useState(false);
   const [toastMsg,    setToastMsg]    = useState('');
+  const [isPlaying,   setIsPlaying]   = useState(false);
+  const audioRef                      = useRef(null);
+  const userToggledRef                = useRef(false);
   const particleId                    = useRef(0);
-  const daysLeft                      = useCountdown(BIRTHDAY_DATE);
+  const { days: daysLeft, isToday }   = useBirthdayCountdown(9, 17); // October 17
   const { displayed: typedName, done: typingDone } = useTypewriter(SIS_NAME, 100, 1000);
+
+  // Preview mode via URL param (?preview=bday or ?bday=today)
+  const isBdayPreview = typeof window !== 'undefined' && 
+    (new URLSearchParams(window.location.search).get('preview') === 'bday' ||
+     new URLSearchParams(window.location.search).get('bday') === 'today');
+  const isBdayMode = isToday || isBdayPreview;
+
+  /* ── Auto Confetti Burst on Birthday Day ── */
+  useEffect(() => {
+    if (isBdayMode) {
+      const timer = setTimeout(() => {
+        fireConfetti();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isBdayMode]);
+
+  /* ── Background Music Autoplay on website open ── */
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = 0.55;
+
+    // Try autoplay when page opens
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch(() => {
+          // Autoplay blocked by browser policy until interaction
+          setIsPlaying(false);
+        });
+    }
+
+    // Play on first user interaction if blocked
+    const handleFirstInteraction = () => {
+      if (!userToggledRef.current && audio.paused) {
+        audio.play().then(() => {
+          setIsPlaying(true);
+        }).catch(() => {});
+      }
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+
+    window.addEventListener('click', handleFirstInteraction, { once: true });
+    window.addEventListener('touchstart', handleFirstInteraction, { once: true });
+    window.addEventListener('keydown', handleFirstInteraction, { once: true });
+
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, []);
+
+  /* ── Music Toggle (Turn Music Off/On) ── */
+  const toggleMusic = (e) => {
+    e.stopPropagation();
+    userToggledRef.current = true;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      showToast('Music Off 🔇');
+    } else {
+      audio.play().then(() => {
+        setIsPlaying(true);
+        showToast('Music Playing 🎵 (October 17th)');
+      }).catch(err => {
+        console.error('Audio playback error:', err);
+      });
+    }
+  };
 
   /* ── Show toast ── */
   const showToast = useCallback((msg) => {
@@ -194,12 +291,17 @@ export default function App() {
     setAllBlown(false);
   };
 
-  /* ── Countdown label ── */
+  /* ── Countdown label: on bday only todaay bday day tadda!! ── */
   const countdownLabel =
-    daysLeft === null ? '' :
-    daysLeft === 0    ? "🎂 TODAY is the day! 🎂" :
-    daysLeft === 1    ? "🎉 TOMORROW is your Birthday!" :
-                        `🍁 ${daysLeft} Days Until Your Birthday!`;
+    isBdayMode
+      ? `🎉 TADAAA!! It's Your Birthday Today! Happy Birthday ${SIS_NAME}! 🎂🥳✨`
+      : daysLeft === null
+      ? ''
+      : daysLeft === 0
+      ? `🎉 TADAAA!! It's Your Birthday Today! Happy Birthday ${SIS_NAME}! 🎂🥳✨`
+      : daysLeft === 1
+      ? "🎉 TOMORROW is your Birthday! Almost there! 🍁✨"
+      : `🍁 ${daysLeft} Days Until Your Birthday!`;
 
   return (
     <div className="root-wrap" onClick={handlePageClick}>
@@ -247,6 +349,32 @@ export default function App() {
         ))}
       </div>
 
+      {/* ── Background Audio ── */}
+      <audio
+        ref={audioRef}
+        src="/October_Seventeenth.mp3"
+        loop
+        preload="auto"
+      />
+
+      {/* ── Floating Music Control Button ── */}
+      <button
+        className={`music-btn ${isPlaying ? 'is-playing' : 'is-paused'}`}
+        onClick={toggleMusic}
+        title={isPlaying ? "Turn Music OFF" : "Turn Music ON (October 17th)"}
+        aria-label={isPlaying ? "Music Off" : "Music On"}
+      >
+        <span className="music-btn-icon">{isPlaying ? '🎵' : '🔇'}</span>
+        <span className="music-btn-text">{isPlaying ? 'Music ON' : 'Music OFF'}</span>
+        {isPlaying && (
+          <span className="music-bars">
+            <span className="bar b1" />
+            <span className="bar b2" />
+            <span className="bar b3" />
+          </span>
+        )}
+      </button>
+
       {/* ═══════════════════════════
            PAGE CONTENT
       ═══════════════════════════ */}
@@ -254,7 +382,7 @@ export default function App() {
 
         {/* ① COUNTDOWN BANNER */}
         {countdownLabel && (
-          <div className="countdown-strip">
+          <div className={`countdown-strip ${isBdayMode ? 'is-today' : ''}`}>
             <span className="countdown-text">{countdownLabel}</span>
           </div>
         )}
